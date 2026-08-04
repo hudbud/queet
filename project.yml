@@ -1,0 +1,71 @@
+name: Queet
+options:
+  bundleIdPrefix: com.hudsonpaine
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Queet:
+    type: application
+    platform: iOS
+    sources:
+      - path: Queet
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hudsonpaine.Queet
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Queet
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+    entitlements:
+      path: Queet/Queet.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.hudsonpaine.queet
+    dependencies:
+      - target: QueetWidgetsExtension
+        embed: true
+  QueetWidgetsExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: QueetWidgets
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hudsonpaine.Queet.QueetWidgets
+    info:
+      path: QueetWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Queet
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: QueetWidgets/QueetWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.hudsonpaine.queet
+fileGroups:
+  - Products.storekit
+schemes:
+  Queet:
+    build:
+      targets:
+        Queet: all
+        QueetWidgetsExtension: all
+    run:
+      config: Debug
+      storeKitConfiguration: Products.storekit
+    archive:
+      config: Release
