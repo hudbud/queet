@@ -4,6 +4,7 @@ import StoreKit
 struct PaywallSheet: View {
     var store: Store
     @Environment(\.dismiss) private var dismiss
+    @State private var didPurchase = false
 
     private let theme = QueetTheme(fontDesign: .system, background: .trueBlack)
 
@@ -38,7 +39,10 @@ struct PaywallSheet: View {
                     Button {
                         Task {
                             await store.purchaseThemes()
-                            if store.isProUnlocked { dismiss() }
+                            if store.isProUnlocked {
+                                didPurchase = true
+                                dismiss()
+                            }
                         }
                     } label: {
                         HStack {
@@ -55,6 +59,7 @@ struct PaywallSheet: View {
                     .buttonStyle(.glassProminent)
                     .disabled(store.themesProduct == nil || store.isLoading)
                     .padding(.horizontal, 40)
+                    .sensoryFeedback(.success, trigger: didPurchase)
 
                     Button("Restore Purchases") {
                         Task { await store.restore() }

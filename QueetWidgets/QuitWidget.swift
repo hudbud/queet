@@ -22,16 +22,38 @@ struct QuitWidgetProvider: AppIntentTimelineProvider {
         let quit = resolveQuit(configuration)
         let now = Date.now
         let calendar = Calendar.current
-        let isHourly = configuration.unit.timeUnit == .hours
-        let count = isHourly ? 24 : 30
-        let step: Calendar.Component = isHourly ? .hour : .day
+        let unit = configuration.unit.timeUnit
 
         var entries: [QuitTimelineEntry] = []
-        for offset in 0..<count {
-            if let date = calendar.date(byAdding: step, value: offset, to: now) {
-                entries.append(QuitTimelineEntry(date: date, quit: quit, metric: configuration.metric, unit: configuration.unit.timeUnit))
+
+        if unit == .hours {
+            // For hours, start at the next hour boundary
+            let nextHour = calendar.nextDate(after: now, matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? now
+            for offset in 0..<24 {
+                if let date = calendar.date(byAdding: .hour, value: offset, to: nextHour) {
+                    entries.append(QuitTimelineEntry(date: date, quit: quit, metric: configuration.metric, unit: unit))
+                }
+            }
+        } else {
+            // For days/weeks/months/years, align to the quit's start time
+            if let quit = quit {
+                let startComponents = calendar.dateComponents([.hour, .minute, .second], from: quit.startDate)
+                let nextBoundary = calendar.nextDate(after: now, matching: startComponents, matchingPolicy: .nextTime) ?? now
+                for offset in 0..<30 {
+                    if let date = calendar.date(byAdding: .day, value: offset, to: nextBoundary) {
+                        entries.append(QuitTimelineEntry(date: date, quit: quit, metric: configuration.metric, unit: unit))
+                    }
+                }
+            } else {
+                // Fallback if no quit
+                for offset in 0..<30 {
+                    if let date = calendar.date(byAdding: .day, value: offset, to: now) {
+                        entries.append(QuitTimelineEntry(date: date, quit: quit, metric: configuration.metric, unit: unit))
+                    }
+                }
             }
         }
+
         return Timeline(entries: entries, policy: .atEnd)
     }
 
@@ -57,39 +79,44 @@ struct QuitWidgetView: View {
 
     var body: some View {
         let theme = currentTheme()
-        ZStack {
-            theme.background.background
-            if let quit = entry.quit {
-                VStack(spacing: 2) {
-                    Text(quit.emoji).font(.title3)
-                    Group {
-                        if entry.metric == .money {
-                            Text(Money.format(Money.saved(quit: quit, at: entry.date), currencyCode: quit.currencyCode))
-                        } else {
-                            Text(Int(entry.unit.value(for: entry.date.timeIntervalSince(quit.startDate))).formatted())
-                        }
-                    }
-                    .font(.system(size: 34, weight: .heavy, design: theme.fontDesign.design))
-                    .foregroundStyle(theme.background.foreground)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-
-                    Text(entry.metric == .money ? quit.currencyCode : entry.unit.label)
+        if let quit = entry.quit {
+            VStack(spacing: 2) {
+                if family == .systemSmall {
+                    Text(quit.name)
                         .font(.system(.caption2, design: theme.fontDesign.design, weight: .semibold))
-                        .tracking(1.5)
-                        .foregroundStyle(theme.background.foreground.opacity(0.55))
-
-                    if family == .systemMedium {
-                        Text(quit.name)
-                            .font(.system(.footnote, design: theme.fontDesign.design))
-                            .foregroundStyle(theme.background.foreground.opacity(0.7))
+                        .foregroundStyle(theme.background.foreground.opacity(0.6))
+                        .lineLimit(1)
+                        .padding(.bottom, 1)
+                }
+                Text(quit.emoji).font(.title3)
+                Group {
+                    if entry.metric == .money {
+                        Text(Money.format(Money.saved(quit: quit, at: entry.date), currencyCode: quit.currencyCode))
+                    } else {
+                        Text(Int(entry.unit.value(for: entry.date.timeIntervalSince(quit.startDate))).formatted())
                     }
                 }
-            } else {
-                Text("Add a quit in Queet")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
+                .font(.system(size: 34, weight: .heavy, design: theme.fontDesign.design))
+                .foregroundStyle(theme.background.foreground)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+
+                Text(entry.metric == .money ? quit.currencyCode : entry.unit.label)
+                    .font(.system(.caption2, design: theme.fontDesign.design, weight: .semibold))
+                    .tracking(1.5)
+                    .foregroundStyle(theme.background.foreground.opacity(0.55))
+
+                if family == .systemMedium {
+                    Text(quit.name)
+                        .font(.system(.footnote, design: theme.fontDesign.design))
+                        .foregroundStyle(theme.background.foreground.opacity(0.7))
+                        .padding(.top, 2)
+                }
             }
+        } else {
+            Text("Add a quit in Queet")
+                .font(.caption)
+                .foregroundStyle(theme.background.foreground.opacity(0.6))
         }
     }
 }
@@ -100,7 +127,9 @@ struct QuitWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: SelectQuitIntent.self, provider: QuitWidgetProvider()) { entry in
             QuitWidgetView(entry: entry)
-                .containerBackground(for: .widget) { Color.black }
+                .containerBackground(for: .widget) {
+                    currentTheme().background.background
+                }
         }
         .configurationDisplayName("Queet")
         .description("Track a quit at a glance.")

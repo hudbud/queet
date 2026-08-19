@@ -11,6 +11,10 @@ struct CornerNode: View {
             .tracking(theme.fontDesign.labelTracking)
             .foregroundStyle(theme.background.foreground.opacity(0.55))
             .contentTransition(.numericText())
-            .onTapGesture { action?() }
+            .contentShape(Rectangle())
+            .padding(10)
+            .onTapGesture {
+                action?()
+            }
     }
 }

@@ -14,7 +14,10 @@ struct QuitAccessoryView: View {
             switch family {
             case .accessoryCircular:
                 VStack(spacing: 0) {
-                    Text(displayValue).font(.system(.title3, design: .rounded, weight: .bold))
+                    Text(displayValue)
+                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
                     Text(displayLabel).font(.system(size: 9))
                 }
             case .accessoryRectangular:

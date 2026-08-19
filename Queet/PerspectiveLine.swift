@@ -11,6 +11,8 @@ struct PerspectiveLine: View {
             .foregroundStyle(theme.background.foreground.opacity(0.45))
             .multilineTextAlignment(.center)
             .contentTransition(.opacity)
+            .contentShape(Rectangle())
+            .padding(.vertical, 10)
             .onTapGesture(perform: onTap)
     }
 }
