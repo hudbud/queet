@@ -2,6 +2,13 @@ import SwiftUI
 import SwiftData
 import WidgetKit
 
+extension View {
+    @ViewBuilder
+    func apply<V: View>(@ViewBuilder _ transform: (Self) -> V) -> some View {
+        transform(self)
+    }
+}
+
 struct MainView: View {
     @Query(sort: \Quit.sortOrder) private var quits: [Quit]
     @Environment(\.modelContext) private var context
@@ -10,10 +17,10 @@ struct MainView: View {
     @AppStorage("fontDesign", store: .queetGroup) private var fontDesign: QueetFontDesign = .system
     @AppStorage("activeQuitIDString", store: .queetGroup) private var activeQuitIDString: String = ""
     @AppStorage("topRightQuitIDString", store: .queetGroup) private var topRightQuitIDString: String = ""
+    @AppStorage("displayCurrency", store: .queetGroup) private var displayCurrency: String = Locale.current.currency?.identifier ?? "USD"
 
     @Namespace private var heroNS
     @State private var unit: QueetTimeUnit = .days
-    @State private var displayCurrency: String = Locale.current.currency?.identifier ?? "USD"
     @State private var showAddQuit = false
     @State private var showManage = false
     @State private var showPaywall = false
@@ -78,32 +85,42 @@ struct MainView: View {
 
             if quits.isEmpty {
                 QuitFormView(existingCount: 0, theme: theme) { quit in
-                    withAnimation { context.insert(quit) }
-                    activeQuitIDString = quit.id.uuidString
+                    withAnimation(.spring(duration: 0.55, bounce: 0.15)) {
+                        context.insert(quit)
+                        activeQuitIDString = quit.id.uuidString
+                    }
                     WidgetCenter.shared.reloadAllTimelines()
                 }
-                .transition(.opacity)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else {
                 content
+                    .transition(.opacity.combined(with: .scale(scale: 1.05)))
             }
         }
         .onAppear {
             syncUnit()
-            regeneratePerspective()
+            regeneratePerspective(forceNew: false)
         }
         .onChange(of: activeQuit?.id) { _, _ in
             syncUnit()
-            regeneratePerspective()
+            regeneratePerspective(forceNew: false)
         }
         .sheet(isPresented: $showAddQuit) {
             QuitFormView(existingCount: quits.count, theme: theme, onCancel: { showAddQuit = false }) { quit in
-                context.insert(quit)
+                withAnimation(.spring(duration: 0.55, bounce: 0.22)) {
+                    context.insert(quit)
+                    // Make the new quit active with animation
+                    if let previousActive = activeQuit {
+                        topRightQuitIDString = previousActive.id.uuidString
+                    }
+                    activeQuitIDString = quit.id.uuidString
+                }
                 showAddQuit = false
                 WidgetCenter.shared.reloadAllTimelines()
             }
         }
         .sheet(isPresented: $showManage) {
-            ManageSheet(onSelect: { quit in
+            ManageSheet(theme: theme, onSelect: { quit in
                 setActive(quit)
                 showManage = false
             })
@@ -136,22 +153,34 @@ struct MainView: View {
                     Spacer()
                     HStack {
                         glassButton(systemImage: "plus") { showAddQuit = true }
+                            .accessibilityLabel("Add quit")
                         Spacer()
                         glassButton(systemImage: "line.3.horizontal") { showManage = true }
+                            .accessibilityLabel("Manage quits")
                     }
                     .padding(.horizontal, 28)
                 }
                 .padding(.bottom, 24)
+            }
+            .onChange(of: timelineContext.date) { _, _ in
+                regeneratePerspective(forceNew: false)
             }
         }
     }
 
     @ViewBuilder
     private var topLeftNode: some View {
-        if let quit = activeQuit {
-            CornerNode(text: Money.format(Money.convert(Money.saved(quit: quit), from: quit.currencyCode, to: displayCurrency), currencyCode: displayCurrency), theme: theme) {
-                withAnimation(.snappy) { displayCurrency = Money.next(after: displayCurrency) }
+        if let quit = activeQuit, quit.costPerDay > 0 {
+            let saved = Money.convert(Money.saved(quit: quit), from: quit.currencyCode, to: displayCurrency)
+            CornerNode(text: Money.format(saved, currencyCode: displayCurrency), theme: theme) {
+                withAnimation(.snappy) {
+                    displayCurrency = Money.next(after: displayCurrency)
+                }
             }
+            .sensoryFeedback(.selection, trigger: displayCurrency)
+            .accessibilityLabel("Money saved: \(Money.format(saved, currencyCode: displayCurrency))")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Tap to cycle currencies")
         }
     }
 
@@ -161,34 +190,54 @@ struct MainView: View {
         HStack(spacing: 6) {
             Text(quit.emoji)
                 .font(.system(size: 18))
-                .matchedGeometryEffect(id: quit.id, in: heroNS)
+                .matchedGeometryEffect(id: "\(quit.id)-emoji", in: heroNS)
+                .id(quit.id)
             Text("\(days)d")
                 .font(.system(.footnote, design: theme.fontDesign.design, weight: .semibold))
                 .foregroundStyle(theme.background.foreground.opacity(0.55))
                 .contentTransition(.numericText())
         }
-        .onTapGesture { setActive(quit) }
+        .contentShape(Rectangle())
+        .padding(8)
+        .accessibilityLabel("\(quit.name): \(days) days")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Tap to switch to this quit")
+        .onTapGesture {
+            setActive(quit)
+        }
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: activeQuitIDString)
     }
 
     @ViewBuilder
     private func heroStack(date: Date) -> some View {
         if let quit = activeQuit {
             let value = Int(unit.value(for: date.timeIntervalSince(quit.startDate)))
-            VStack(spacing: 4) {
+            let useMonospaced = unit == .seconds || unit == .minutes
+            VStack(spacing: 0) {
                 Text(quit.emoji)
                     .font(.system(size: 22))
                     .opacity(0.85)
-                    .matchedGeometryEffect(id: quit.id, in: heroNS)
-                    .padding(.bottom, 4)
+                    .matchedGeometryEffect(id: "\(quit.id)-emoji", in: heroNS)
+                    .padding(.bottom, 8)
+                    .id(quit.id)
 
-                Text("\(value)")
+                Text(value.formatted())
                     .font(.system(size: 120, weight: theme.fontDesign.heroWeight, design: theme.fontDesign.design))
                     .tracking(theme.fontDesign.heroTracking)
-                    .monospacedDigit()
+                    .apply { view in
+                        if useMonospaced {
+                            view.monospacedDigit()
+                        } else {
+                            view
+                        }
+                    }
                     .minimumScaleFactor(0.3)
                     .lineLimit(1)
                     .foregroundStyle(theme.background.foreground)
                     .contentTransition(.numericText(value: Double(value)))
+                    .accessibilityLabel("\(value) \(unit.label) since quitting \(quit.name)")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Tap to cycle time units")
                     .onLongPressGesture(minimumDuration: 0.4) {
                         if store.isProUnlocked {
                             withAnimation(.easeInOut) { fontDesign = fontDesign.next }
@@ -196,24 +245,46 @@ struct MainView: View {
                             showPaywall = true
                         }
                     }
+                    .onTapGesture {
+                        withAnimation(.snappy) { unit = unit.next }
+                        PerQuitUnitStore.setUnit(unit, for: quit.id)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 20)
 
                 Text(unit.label)
                     .font(.system(.subheadline, design: theme.fontDesign.design, weight: .semibold))
                     .tracking(theme.fontDesign.labelTracking)
                     .foregroundStyle(theme.background.foreground.opacity(0.55))
                     .textCase(.lowercase)
+                    .padding(.top, 4)
+                    .accessibilityLabel("Unit: \(unit.label)")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Tap to cycle time units")
                     .onTapGesture {
                         withAnimation(.snappy) { unit = unit.next }
                         PerQuitUnitStore.setUnit(unit, for: quit.id)
                     }
+                    .contentShape(Rectangle())
+                    .padding(12)
+                    .sensoryFeedback(.selection, trigger: unit)
 
-                if let perspective {
-                    PerspectiveLine(text: perspective.text, theme: theme) {
-                        withAnimation(.easeInOut) { regeneratePerspective() }
+                // Fixed-height slot for perspective line
+                Group {
+                    if let perspective {
+                        PerspectiveLine(text: perspective.text, theme: theme) {
+                            withAnimation(.easeInOut) { regeneratePerspective(forceNew: true) }
+                        }
+                        .padding(.horizontal, 40)
+                        .transition(.opacity)
+                        .sensoryFeedback(.selection, trigger: perspective.index)
+                        .accessibilityLabel(perspective.text)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint("Tap to cycle perspective")
                     }
-                    .padding(.top, 18)
-                    .padding(.horizontal, 40)
                 }
+                .frame(height: 44, alignment: .top)
+                .padding(.top, 18)
             }
         }
     }
@@ -225,7 +296,7 @@ struct MainView: View {
                 .frame(width: 52, height: 52)
         }
         .buttonStyle(.glass)
-        .clipShape(Circle())
+        .buttonBorderShape(.circle)
     }
 
     private func syncUnit() {
@@ -233,14 +304,30 @@ struct MainView: View {
         unit = PerQuitUnitStore.unit(for: quit.id)
     }
 
-    private func regeneratePerspective() {
+    private func regeneratePerspective(forceNew: Bool = false) {
         guard let quit = activeQuit else {
             perspective = nil
             return
         }
         let interval = Date.now.timeIntervalSince(quit.startDate)
-        if let result = Perspective.line(for: interval, excluding: perspective?.index) {
-            perspective = result
+
+        // If forcing new or no perspective exists, get a fresh one
+        if forceNew || perspective == nil {
+            if let result = Perspective.line(for: interval, excluding: forceNew ? perspective?.index : nil) {
+                perspective = result
+            }
+        } else {
+            // Update the count for the existing perspective line
+            if let currentIndex = perspective?.index,
+               currentIndex < Perspective.table.count,
+               let text = Perspective.table[currentIndex].text(for: interval) {
+                perspective = (text: text, index: currentIndex)
+            } else {
+                // Current perspective out of range, get a new one
+                if let result = Perspective.line(for: interval, excluding: nil) {
+                    perspective = result
+                }
+            }
         }
     }
 }

@@ -1,31 +1,35 @@
 import SwiftUI
 
-struct QuitFormView: View {
-    let existingCount: Int
-    var theme: QueetTheme = QueetTheme(fontDesign: .system, background: .trueBlack)
-    var onCancel: (() -> Void)? = nil
-    var onSave: (Quit) -> Void
+struct EditQuitSheet: View {
+    @Bindable var quit: Quit
+    var theme: QueetTheme
+    @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var emoji = "🚭"
-    @State private var startDate = Date.now
-    @State private var costText = ""
+    @State private var name: String
+    @State private var emoji: String
+    @State private var costText: String
+    @State private var startDate: Date
     @FocusState private var nameFocused: Bool
 
     private static let emojiChoices = ["🚭", "🍺", "🍷", "☕️", "🍬", "📱", "🎰", "💊", "🍔"]
 
-    var body: some View {
-        ZStack {
-            theme.background.background.ignoresSafeArea()
+    init(quit: Quit, theme: QueetTheme) {
+        self.quit = quit
+        self.theme = theme
+        _name = State(initialValue: quit.name)
+        _emoji = State(initialValue: quit.emoji)
+        _costText = State(initialValue: quit.costPerDay > 0 ? "\(quit.costPerDay)" : "")
+        _startDate = State(initialValue: quit.startDate)
+    }
 
-            VStack(spacing: 0) {
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                theme.background.background.ignoresSafeArea()
+
                 ScrollView {
                     VStack(spacing: 26) {
-                        Spacer().frame(height: 40)
-
-                        Text(existingCount == 0 ? "What are you quitting?" : "Add another")
-                            .font(.system(.title2, design: theme.fontDesign.design, weight: .bold))
-                            .foregroundStyle(theme.background.foreground)
+                        Spacer().frame(height: 20)
 
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 50), spacing: 10)], spacing: 10) {
                             ForEach(Self.emojiChoices, id: \.self) { choice in
@@ -46,7 +50,7 @@ struct QuitFormView: View {
                             }
                         }
 
-                        TextField("", text: $name, prompt: Text("Name it").foregroundStyle(theme.background.foreground.opacity(0.35)))
+                        TextField("", text: $name, prompt: Text("Name").foregroundStyle(theme.background.foreground.opacity(0.35)))
                             .multilineTextAlignment(.center)
                             .font(.system(.title, design: theme.fontDesign.design, weight: .semibold))
                             .foregroundStyle(theme.background.foreground)
@@ -56,7 +60,7 @@ struct QuitFormView: View {
                             .padding(.horizontal, 32)
 
                         VStack(spacing: 8) {
-                            Text("Since when?")
+                            Text("Start date")
                                 .font(.system(.caption, design: theme.fontDesign.design, weight: .semibold))
                                 .foregroundStyle(theme.background.foreground.opacity(0.5))
                             DatePicker("", selection: $startDate, in: ...Date.now, displayedComponents: [.date, .hourAndMinute])
@@ -84,44 +88,30 @@ struct QuitFormView: View {
                                 }
                         }
 
-                        Spacer().frame(height: 40)
+                        Spacer().frame(height: 20)
                     }
                     .padding(.horizontal, 24)
                 }
                 .scrollDismissesKeyboard(.interactively)
-
-                VStack(spacing: 12) {
-                    Button {
-                        let quit = Quit(
-                            name: name.trimmingCharacters(in: .whitespaces).isEmpty ? "Untitled" : name,
-                            emoji: emoji,
-                            startDate: startDate,
-                            costPerDay: Decimal(string: costText) ?? 0,
-                            sortOrder: existingCount
-                        )
-                        onSave(quit)
-                    } label: {
-                        Text(existingCount == 0 ? "Start" : "Add")
-                            .font(.system(.headline, design: theme.fontDesign.design, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .padding(.horizontal, 40)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                    if let onCancel {
-                        Button("Cancel", action: onCancel)
-                            .font(.system(.footnote, design: theme.fontDesign.design))
-                            .foregroundStyle(theme.background.foreground.opacity(0.5))
-                    }
-                }
-                .padding(.bottom, 24)
-                .background(theme.background.background)
             }
-        }
-        .onAppear {
-            nameFocused = true
+            .navigationTitle("Edit")
+            .navigationBarTitleDisplayMode(.inline)
+            .preferredColorScheme(theme.background == .paper ? .light : .dark)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        quit.name = name.trimmingCharacters(in: .whitespaces).isEmpty ? "Untitled" : name
+                        quit.emoji = emoji
+                        quit.startDate = startDate
+                        quit.costPerDay = Decimal(string: costText) ?? 0
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
         }
     }
 }
